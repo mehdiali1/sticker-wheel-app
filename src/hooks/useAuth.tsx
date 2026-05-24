@@ -32,9 +32,17 @@ const localAuthAccountsKey = 'stickerverse-local-auth-accounts';
 interface LocalAccount {
   uid: string;
   email: string;
-  password: string;
+  passwordHash: string;
   displayName: string;
 }
+
+const hashSecret = async (value: string): Promise<string> => {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((chunk) => chunk.toString(16).padStart(2, '0'))
+    .join('');
+};
 
 const getLocalAccounts = (): LocalAccount[] => {
   const raw = localStorage.getItem(localAuthAccountsKey);
@@ -93,7 +101,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       return;
     }
 
-    const account = getLocalAccounts().find((candidate) => candidate.email === email && candidate.password === password);
+    const passwordHash = await hashSecret(password);
+    const account = getLocalAccounts().find(
+      (candidate) => candidate.email === email && candidate.passwordHash === passwordHash
+    );
     if (!account) {
       throw new Error('Invalid email or password.');
     }
@@ -115,8 +126,9 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
       throw new Error('An account with that email already exists.');
     }
 
+    const passwordHash = await hashSecret(password);
     const uid = `local-${crypto.randomUUID()}`;
-    accounts.push({ uid, email, password, displayName });
+    accounts.push({ uid, email, passwordHash, displayName });
     setLocalAccounts(accounts);
     await createUserProfile(uid, email, displayName);
     localStorage.setItem(localAuthUserKey, uid);
@@ -149,7 +161,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({ children }) =>
     }
 
     const uid = `local-google-${crypto.randomUUID()}`;
-    accounts.push({ uid, email, password: 'google-oauth', displayName: 'Google Player' });
+    accounts.push({ uid, email, passwordHash: 'google-oauth', displayName: 'Google Player' });
     setLocalAccounts(accounts);
     await createUserProfile(uid, email, 'Google Player');
     localStorage.setItem(localAuthUserKey, uid);
